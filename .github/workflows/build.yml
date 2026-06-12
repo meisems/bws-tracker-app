@@ -83,8 +83,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.buildozer
-          key: buildozer-v6-${{ hashFiles('buildozer.spec') }}
-          restore-keys: buildozer-v6-
+          key: buildozer-v7-${{ hashFiles('buildozer.spec') }}
+          restore-keys: buildozer-v7-
 
       - name: Install Buildozer
         run: |

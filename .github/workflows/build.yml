@@ -25,33 +25,6 @@ jobs:
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
           df -h
 
-      - name: Cache Buildozer
-        uses: actions/cache@v4
-        with:
-          path: ~/.buildozer
-          key: buildozer-v4-${{ hashFiles('buildozer.spec') }}
-          restore-keys: buildozer-v4-
-
-      # Write license hash files directly into Buildozer's own SDK path.
-      # This is the actual fix — the sdkmanager checks for these files,
-      # not for interactive input, when running non-interactively.
-      - name: Pre-accept Android SDK licenses
-        run: |
-          SDK_LICENSES=~/.buildozer/android/platform/android-sdk/licenses
-          mkdir -p "$SDK_LICENSES"
-
-          printf '\n24333f8a63b6825ea9c5514f83c2829b004d1fee\nd56f5187479451eabf01fb78af6dfcb131a6481e\n' \
-            > "$SDK_LICENSES/android-sdk-license"
-
-          printf '\n84831b9409646a918e30573bab4c9c91346d8abd\n' \
-            > "$SDK_LICENSES/android-sdk-preview-license"
-
-          printf '\n33b6a2b64607f11b759f320ef9dff4ae5c47d97a\n' \
-            > "$SDK_LICENSES/google-gdk-license"
-
-          echo "License files written:"
-          ls -la "$SDK_LICENSES"
-
       - name: Install system packages
         run: |
           sudo apt-get update -qq
@@ -67,6 +40,55 @@ jobs:
             cmake \
             build-essential \
             ccache
+
+      # Install Android SDK command-line tools manually so sdkmanager
+      # exists at the path buildozer expects before it tries to use it.
+      - name: Install Android SDK command-line tools
+        run: |
+          SDK_ROOT=~/.buildozer/android/platform/android-sdk
+          CMDLINE_TOOLS_DIR="$SDK_ROOT/cmdline-tools/latest"
+          mkdir -p "$CMDLINE_TOOLS_DIR"
+
+          # Download the latest cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
+            -O /tmp/cmdline-tools.zip
+          unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools-extracted
+
+          # Google zips it as cmdline-tools/ — move contents into latest/
+          mv /tmp/cmdline-tools-extracted/cmdline-tools/* "$CMDLINE_TOOLS_DIR/"
+
+          # Symlink so buildozer finds sdkmanager at the old tools/bin path too
+          mkdir -p "$SDK_ROOT/tools/bin"
+          ln -sf "$CMDLINE_TOOLS_DIR/bin/sdkmanager" "$SDK_ROOT/tools/bin/sdkmanager"
+
+          echo "$CMDLINE_TOOLS_DIR/bin" >> $GITHUB_PATH
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> $GITHUB_ENV
+          echo "SDK installed:"
+          ls "$CMDLINE_TOOLS_DIR/bin"
+
+      - name: Accept Android SDK licenses
+        run: |
+          SDK_LICENSES=~/.buildozer/android/platform/android-sdk/licenses
+          mkdir -p "$SDK_LICENSES"
+
+          printf '\n24333f8a63b6825ea9c5514f83c2829b004d1fee\nd56f5187479451eabf01fb78af6dfcb131a6481e\n' \
+            > "$SDK_LICENSES/android-sdk-license"
+          printf '\n84831b9409646a918e30573bab4c9c91346d8abd\n' \
+            > "$SDK_LICENSES/android-sdk-preview-license"
+          printf '\n33b6a2b64607f11b759f320ef9dff4ae5c47d97a\n' \
+            > "$SDK_LICENSES/google-gdk-license"
+
+          # Also accept via sdkmanager for completeness
+          yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses || true
+          echo "Licenses written:"
+          ls -la "$SDK_LICENSES"
+
+      - name: Cache Buildozer
+        uses: actions/cache@v4
+        with:
+          path: ~/.buildozer
+          key: buildozer-v5-${{ hashFiles('buildozer.spec') }}
+          restore-keys: buildozer-v5-
 
       - name: Install Buildozer
         run: |

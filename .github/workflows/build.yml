@@ -17,38 +17,63 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Cache Buildozer directory
+      # Free space — but keep the pre-installed Android SDK
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          df -h
+
+      # Accept Android licences using the SDK already on the runner
+      - name: Accept Android SDK licences
+        run: |
+          mkdir -p ~/.android
+          touch ~/.android/repositories.cfg
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
+
+      - name: Cache Buildozer artifacts
         uses: actions/cache@v4
         with:
-          path: ~/.buildozer
-          key: buildozer-${{ hashFiles('buildozer.spec') }}
-          restore-keys: buildozer-
+          path: |
+            ~/.buildozer
+            ~/.gradle
+          key: buildozer-v3-${{ hashFiles('buildozer.spec') }}
+          restore-keys: buildozer-v3-
 
-      - name: Install system dependencies
+      - name: Install system packages
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
             git zip unzip \
-            openjdk-17-jdk \
-            python3-pip \
             autoconf libtool \
             pkg-config \
             zlib1g-dev \
             libncurses5-dev \
-            libncursesw5-dev \
             libffi-dev \
             libssl-dev \
             cmake \
             build-essential \
             ccache
 
-      - name: Install Buildozer and Cython
+      - name: Install Buildozer
         run: |
-          pip install --upgrade pip
-          pip install buildozer==1.5.0 cython==3.0.0
+          pip install --upgrade pip setuptools wheel
+          pip install buildozer==1.5.0 cython==3.0.3
 
+      # Verbose build — full output visible in Actions log
       - name: Build APK
-        run: buildozer -v android debug
+        run: buildozer -v android debug 2>&1
+
+      # Always show what ended up in bin/ (helps diagnose missing APK)
+      - name: Show build output
+        if: always()
+        run: |
+          echo "=== bin/ contents ==="
+          ls -lah bin/ 2>/dev/null || echo "(bin/ not created — build failed)"
+          echo "=== Disk usage ==="
+          df -h
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
